@@ -1,0 +1,125 @@
+# MarketPulse — Spark Structured Streaming Lakehouse
+
+> **One-liner:** *It's the same Bitcoin pipeline, rebuilt the proper way — Spark
+> Structured Streaming with watermarking and stateful windowed aggregations on
+> Databricks, instead of Python threads with pandas.*
+
+A near-real-time crypto market pipeline built **entirely on Databricks Free
+Edition (serverless)** using **Spark Structured Streaming**: Auto Loader
+ingestion, watermarked stateful windowed aggregations, idempotent `MERGE`
+upserts, and business-grade gold signals — all within Free Edition's serverless
+constraints via `Trigger.AvailableNow`.
+
+> ⚙️ Status: **scaffolding**. Implementation is tracked as GitHub issues WP0–WP7
+> (see [Work packages](#work-packages)). This README is updated as packages land.
+
+---
+
+## Architecture
+
+```
+SOURCE (off-Databricks, optional)
+  Mode A: Replay generator (notebook on Databricks) ─┐
+  Mode B: Local Binance WS producer ── SDK/CLI push ─┤
+                                                      ▼
+        Unity Catalog Volume — landing  /Volumes/mktpulse/bronze/raw/  (≈ S3 raw)
+                                                      │  Auto Loader (cloudFiles) + checkpoint
+  ┌──────────────────────────────────────────────────▼──────────────────────────────────────┐
+  │  SPARK STRUCTURED STREAMING — Databricks serverless                                        │
+  │  BRONZE  readStream → +ingest_ts,_source_file → Delta (checkpointed, idempotent)           │
+  │            │  null-key rows → bronze.trades_quarantine                                      │
+  │            ▼                                                                                │
+  │  SILVER  withWatermark(event_ts,"2 min") → groupBy(window(...)) 1-min OHLCV/volume          │
+  │            dropDuplicates (watermark-bounded) → MERGE upsert via foreachBatch (idempotent)  │
+  │            ▼                                                                                 │
+  │  GOLD    market_pulse: momentum_signal · volume_spike(>2× rolling) · volatility             │
+  └──────────────────────────────────┬──────────────────────────────────────────────────────────┘
+                                      ▼
+    Lakeflow Declarative Pipeline / Job   ·   Unity Catalog governance
+    expectations (DQ gates) · retries     ·   lineage · schema enforcement
+    Trigger.AvailableNow (scheduled)      ·   checkpoints · quarantine tables
+```
+
+Catalog `mktpulse`; schemas `bronze`, `silver`, `gold`, `ops`. Table contracts
+are frozen in [`CONTRACTS.md`](./CONTRACTS.md).
+
+## Why Spark runs on Databricks (never local)
+
+All Spark code runs on **Databricks serverless** — Free Edition's whole value is
+managed serverless Spark for free. The only thing that may run locally is the
+optional **Mode B** producer.
+
+### Mode A vs Mode B (same landing folder, so Spark code never changes)
+
+- **Mode A — Replay (backbone, build first):** a Databricks notebook drips a
+  seeded historical dataset into the landing Volume on a timer. 100% on
+  Databricks, reproducible by anyone who clones the repo.
+- **Mode B — Live (optional flex):** a local Binance WebSocket producer writes
+  small files and pushes them to the UC Volume via the Databricks SDK/CLI
+  (outbound call goes *to* Databricks, which Free Edition allows). Auto Loader
+  picks them up.
+
+## Free Edition constraints (designed around)
+
+- **Serverless only** — no custom clusters/GPUs.
+- **No always-on streams** — 7-day max runtime + daily quota → use
+  **`Trigger.AvailableNow`** on a schedule (keeps streaming semantics —
+  watermarks, state, exactly-once — without burning quota). Never a continuous
+  `Trigger.ProcessingTime` stream.
+- **Restricted outbound internet** — seed data into a Volume; don't pull live
+  APIs from a notebook.
+- **Spark Connect only / no Scala / no RDDs** — PySpark DataFrame API + Spark SQL.
+
+## Repository layout
+
+```
+notebooks/      00_setup · 01_bronze · 02_silver · 03_gold · 04_replay_producer
+producers/      producer.py (Mode B local Binance WS producer)
+src/            config.py (parameterisation) · quality.py (DQ helpers)
+fixtures/       seeded bronze/silver samples for parallel dev
+tests/          pytest suites
+pipelines/      Lakeflow Declarative Pipeline / Job JSON
+CONTRACTS.md    frozen table contracts (read-only after WP0)
+```
+
+## Local development
+
+The Spark code targets Databricks serverless and is not meant to run locally.
+Locally you can run the unit tests and the Mode B producer:
+
+```bash
+python -m venv .venv && . .venv/Scripts/activate   # Windows
+pip install -r requirements.txt                    # added in WP0/WP5
+pytest                                              # unit/contract tests
+```
+
+Notebooks import [`src/config.py`](./src/config.py) for catalog/schema/volume/
+checkpoint values. Override per work package with `Config(dev_suffix="_dev_wpN")`
+to isolate concurrent runs.
+
+## Work packages
+
+Implementation is broken into 8 GitHub issues. WP0 blocks everything; WP1–WP5 can
+be built in parallel against the frozen contracts + seeded fixtures; WP6–WP7
+converge.
+
+| # | Package | Parallel? |
+|---|---------|-----------|
+| WP0 | Foundation, contracts & fixtures | solo (blocks all) |
+| WP1 | Bronze streaming ingestion | ✅ |
+| WP2 | Silver stateful streaming (headline) | ✅ |
+| WP3 | Gold business marts | ✅ |
+| WP4 | Producers (Mode A + Mode B) | ✅ |
+| WP5 | Data quality & expectations | ✅ |
+| WP6 | Orchestration | solo (needs WP1–WP3) |
+| WP7 | Polish & README | solo (needs all) |
+
+## How I'd productionise on AWS
+
+Auto Loader ← S3 raw bucket · MSK/Kinesis for live ingest · Glue/EMR for managed
+Spark · the same medallion (bronze/silver/gold) on Delta/Iceberg · the same
+watermark + `MERGE` idempotency story. *(Expanded in WP7.)*
+
+## Issues encountered
+
+_None yet — notable diagnosed bugs get an entry here._

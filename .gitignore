@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Spark / Databricks local artifacts
+*.crc
+_delta_log/
+spark-warehouse/
+checkpoints/
+metastore_db/
+derby.log
+
+# Data (never commit raw/seeded data dumps)
+data/
+*.parquet
+*.csv.gz
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Notebooks
+.ipynb_checkpoints/
