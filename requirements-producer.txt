@@ -1,0 +1,7 @@
+# Mode B live producer dependencies (WP4) — only needed to run
+# producers/producer.py locally against the Binance WebSocket. Kept separate from
+# requirements.txt so CI stays lean: the pure-Python producer core in
+# src/producer.py is unit-tested without these (the network + SDK are imported
+# lazily, only on the live path).
+websocket-client>=1.7
+databricks-sdk>=0.20
