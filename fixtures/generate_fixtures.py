@@ -255,8 +255,11 @@ def _write_raw(trades: list[Trade]) -> int:
 
 def _write_csv(path: Path, header: list[str], rows: list[list]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    # newline="" is required by the csv module; lineterminator="\n" forces LF so the
+    # output matches the LF-normalised git blob on every platform (the determinism
+    # test would otherwise fail on Linux while passing on Windows). See issue #10.
     with path.open("w", encoding="utf-8", newline="") as fh:
-        w = csv.writer(fh)
+        w = csv.writer(fh, lineterminator="\n")
         w.writerow(header)
         w.writerows(rows)
 
