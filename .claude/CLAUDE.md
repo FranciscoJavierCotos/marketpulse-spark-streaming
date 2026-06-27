@@ -81,8 +81,7 @@ README → Local development.
   1. **Block on CI:** run `gh pr checks <#> --watch` and wait for every check to pass. This is the gate, and it works regardless of repo settings — do not skip it.
   2. **If a check is red:** fix it and push; re-watch. Never merge red, never `--admin`/override, never bypass branch protection.
   3. **Merge only once green:** `gh pr merge <#> --squash --delete-branch`.
-  - `--auto` is optional belt-and-suspenders: it only *gates* when a required status check exists on `main`. **Without branch protection it merges immediately**, so it is NOT a substitute for the explicit `--watch` wait in step 1 — only add `--auto` on top of, never instead of, watching checks green.
-  - **Recommended one-time repo config (manual):** add a branch-protection ruleset on `main` requiring the `pytest (3.12)` check (and no self-review) so merges are gated server-side too. See README → *Branch protection*.
+  - **Server-side gate is active:** the `main` ruleset *"Pytest has to pass"* requires the `pytest (3.12)` check with **no bypass actors** (applies to admins too), so a merge — including `gh pr merge --auto` — cannot land on red. Step 1's `--watch` is still the rule (works even if the ruleset changes); `--auto` may be added on top, never as a substitute.
   - After it merges, flip the Obsidian page + `_Database.md` row to `done` and fill in the PR link.
 
 ## Keep docs in sync (same change, never a follow-up)
