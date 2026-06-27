@@ -59,6 +59,21 @@ SPIKE_FACTOR = 12.0
 PRICE_DP = 2
 QTY_DP = 6
 RATIO_DP = 6
+VOLATILITY_DP = 6
+ROLLING_DP = 6
+
+# Gold signal knobs — kept identical to src/gold.py so the twin reproduces this
+# fixture. Order-flow thresholds gate the *strong* momentum reads; a window is a
+# spike when volume exceeds VOLUME_SPIKE_FACTOR× its trailing 30-window rolling avg.
+BULL_RATIO = 0.6
+BEAR_RATIO = 0.4
+VOLUME_SPIKE_FACTOR = 2.0
+ROLLING_WINDOW_ROWS = 30
+
+# Fixed wall-clock stamp for the gold fixture's non-deterministic generated_at (the
+# Spark sink stamps current_timestamp(); the committed fixture carries a constant so
+# it stays byte-identical — same trick as INGEST_TS for bronze).
+GENERATED_AT = "2026-06-27T10:06:00.000Z"
 
 OUT = Path(__file__).resolve().parent
 
@@ -222,6 +237,61 @@ def derive_silver(clean: list[Trade]) -> list[dict]:
 
 
 # --------------------------------------------------------------------------- #
+# Gold derivation — business signals over the silver windows (WP3 oracle)
+# --------------------------------------------------------------------------- #
+def derive_gold(silver_rows: list[dict]) -> list[dict]:
+    """Derive gold market-pulse signals from the silver windows.
+
+    Independent re-implementation of ``src.gold.compute_market_pulse`` (the generator
+    deliberately reimplements each layer so the committed fixture is an *independent*
+    oracle the twin must match). The rolling average is the trailing
+    ``ROLLING_WINDOW_ROWS`` windows per symbol, including the current one, so it is
+    always defined; ``volume_spike`` compares volume to ``VOLUME_SPIKE_FACTOR``× it.
+    """
+    by_symbol: dict[str, list[dict]] = {}
+    for r in silver_rows:
+        by_symbol.setdefault(r["symbol"], []).append(r)
+
+    rows: list[dict] = []
+    for symbol, srows in by_symbol.items():
+        ordered = sorted(srows, key=lambda r: r["window_start"])
+        for i, r in enumerate(ordered):
+            lo = max(0, i - (ROLLING_WINDOW_ROWS - 1))
+            trailing = ordered[lo : i + 1]
+            rolling = sum(t["volume"] for t in trailing) / len(trailing)
+
+            if r["close"] > r["open"]:
+                direction = "up"
+            elif r["close"] < r["open"]:
+                direction = "down"
+            else:
+                direction = "flat"
+
+            if direction == "up":
+                momentum = "strong_bullish" if r["taker_buy_ratio"] >= BULL_RATIO else "bullish"
+            elif direction == "down":
+                momentum = "strong_bearish" if r["taker_buy_ratio"] <= BEAR_RATIO else "bearish"
+            else:
+                momentum = "neutral"
+
+            rows.append(
+                {
+                    "window_start": r["window_start"],
+                    "symbol": symbol,
+                    "candle_direction": direction,
+                    "momentum_signal": momentum,
+                    "volume_spike": r["volume"] > VOLUME_SPIKE_FACTOR * rolling,
+                    "volatility": round((r["high"] - r["low"]) / r["open"], VOLATILITY_DP) if r["open"] else 0.0,
+                    "rolling_vol_30m": round(rolling, ROLLING_DP),
+                    "generated_at": GENERATED_AT,
+                }
+            )
+
+    rows.sort(key=lambda d: (d["window_start"], d["symbol"]))
+    return rows
+
+
+# --------------------------------------------------------------------------- #
 # Writers
 # --------------------------------------------------------------------------- #
 def _write_raw(trades: list[Trade]) -> int:
@@ -296,6 +366,23 @@ def _write_silver(silver_rows: list[dict]) -> None:
     _write_csv(OUT / "silver" / "trades_1min.csv", header, rows)
 
 
+def _write_gold(gold_rows: list[dict]) -> None:
+    header = [
+        "window_start", "symbol", "candle_direction", "momentum_signal",
+        "volume_spike", "volatility", "rolling_vol_30m", "generated_at",
+    ]
+    rows = [
+        [
+            # Render the boolean lowercase so it round-trips through the contract's
+            # BOOLEAN dtype check (and reads like Spark's CSV booleans).
+            str(r[c]).lower() if c == "volume_spike" else r[c]
+            for c in header
+        ]
+        for r in gold_rows
+    ]
+    _write_csv(OUT / "gold" / "market_pulse.csv", header, rows)
+
+
 def main() -> None:
     trades = _generate_trades()
     clean = [t for t in trades if not t.is_dirty]
@@ -305,11 +392,13 @@ def main() -> None:
     _write_bronze(clean, dirty)
     silver_rows = derive_silver(clean)
     _write_silver(silver_rows)
+    gold_rows = derive_gold(silver_rows)
+    _write_gold(gold_rows)
 
     print(
         f"Generated {len(trades)} raw trades across {n_files} files "
         f"({len(clean)} clean -> bronze, {len(dirty)} dirty -> quarantine, "
-        f"{len(silver_rows)} silver windows)."
+        f"{len(silver_rows)} silver windows, {len(gold_rows)} gold rows)."
     )
 
 

@@ -43,6 +43,10 @@ all within Free Edition's serverless limits via `Trigger.AvailableNow`.
 - `src/silver.py` — shared 1-min OHLCV windowing semantics (WP2): one definition,
   rendered both as a pure-Python `aggregate_ohlcv` (CI oracle, no Spark) and the
   `to_silver` watermark+window+dedup Spark transform `02_silver.py` runs.
+- `src/gold.py` — shared business-signal semantics (WP3): one definition, rendered
+  both as a pure-Python `compute_market_pulse` (CI oracle, no Spark) and the `to_gold`
+  Spark transform `03_gold.py` runs (candle direction, momentum, `volume_spike` via a
+  rolling-avg window function, volatility).
 - `src/producer.py` — shared landing-file shape for both producers (WP4): one
   definition of the raw NDJSON record, the Binance→clean `normalize_binance_trade`
   (Mode B core), NDJSON (de)serialization, and replay pacing helpers (chunk /
@@ -50,7 +54,7 @@ all within Free Edition's serverless limits via `Trigger.AvailableNow`.
   thin I/O shells over it.
 - `src/quality.py` — reusable DQ expectation helpers (WP5).
 - `fixtures/generate_fixtures.py` — deterministic stdlib generator (WP0); emits the
-  raw **NDJSON** seed and derives the committed bronze/silver fixtures. Regenerate
+  raw **NDJSON** seed and derives the committed bronze/silver/gold fixtures. Regenerate
   with `python fixtures/generate_fixtures.py` (byte-identical, fixed seed).
 - `CONTRACTS.md` — frozen `bronze`/`silver`/`gold`/`ops.dq_failures` schemas.
 - `pipelines/` — Lakeflow Declarative Pipeline / Job JSON (WP6).

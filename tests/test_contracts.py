@@ -58,6 +58,8 @@ def _coercible(value: str, sql_type: str) -> bool:
             float(value)
         elif sql_type == "BIGINT":
             int(value)
+        elif sql_type == "BOOLEAN":
+            return value.lower() in ("true", "false")
         # STRING accepts anything
         return True
     except ValueError:
@@ -80,9 +82,15 @@ def test_silver_header_matches_contract():
     assert _csv_header(FIX / "silver" / "trades_1min.csv") == contract
 
 
+def test_gold_header_matches_contract():
+    contract = [c for c, _ in _contract_columns("`gold.market_pulse`")]
+    assert _csv_header(FIX / "gold" / "market_pulse.csv") == contract
+
+
 @pytest.mark.parametrize("rel,section", [
     ("bronze/trades.csv", "`bronze.trades`"),
     ("silver/trades_1min.csv", "`silver.trades_1min`"),
+    ("gold/market_pulse.csv", "`gold.market_pulse`"),
 ])
 def test_dtypes_inferred_from_csv_match_contract(rel, section):
     contract = dict(_contract_columns(section))
