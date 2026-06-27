@@ -34,6 +34,9 @@ all within Free Edition's serverless limits via `Trigger.AvailableNow`.
 - `producers/producer.py` — Mode B local Binance WS producer (WP4).
 - `src/config.py` — single source of truth for catalog/schema/volume/checkpoint;
   every notebook imports it. Isolate parallel runs with `Config(dev_suffix=...)`.
+- `src/bronze.py` — shared bronze quarantine-routing rule (WP1): one definition,
+  rendered both as a pure-Python `quarantine_reason` (unit-tested in CI without
+  Spark) and a `quarantine_reason_column` Spark expression `01_bronze.py` uses.
 - `src/quality.py` — reusable DQ expectation helpers (WP5).
 - `fixtures/generate_fixtures.py` — deterministic stdlib generator (WP0); emits the
   raw **NDJSON** seed and derives the committed bronze/silver fixtures. Regenerate
