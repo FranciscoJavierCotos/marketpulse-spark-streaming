@@ -1,0 +1,37 @@
+name: CI
+
+# Run on every PR and on pushes to main so broken changes are caught before they
+# land. The `test` job is the required gate for CI-gated auto-merge (CLAUDE.md
+# workflow): the green check is the review.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same ref so a new push doesn't leave stale runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: pytest (3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # Spark runs on Databricks, never in CI — these are pure-Python unit/contract
+      # tests against the fixture generator output, so the install stays minimal.
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest -q

@@ -76,11 +76,36 @@ optional **Mode B** producer.
 notebooks/      00_setup · 01_bronze · 02_silver · 03_gold · 04_replay_producer
 producers/      producer.py (Mode B local Binance WS producer)
 src/            config.py (parameterisation) · quality.py (DQ helpers)
-fixtures/       seeded bronze/silver samples for parallel dev
-tests/          pytest suites
+fixtures/       generate_fixtures.py + committed raw/bronze/silver seed (see fixtures/README.md)
+tests/          pytest suites (config · contracts · fixtures)
 pipelines/      Lakeflow Declarative Pipeline / Job JSON
+.github/        workflows/ci.yml (pytest on every PR)
 CONTRACTS.md    frozen table contracts (read-only after WP0)
 ```
+
+### Seed data & fixtures
+
+The pipeline is fed by a **committed, deterministic seed** produced by
+[`fixtures/generate_fixtures.py`](./fixtures/generate_fixtures.py) (stdlib only,
+fixed seed → byte-identical on every run). It emits the historical raw NDJSON and
+derives the bronze/silver fixtures from it, so each layer's fixture is internally
+consistent. Regenerate with:
+
+```bash
+python fixtures/generate_fixtures.py
+```
+
+The raw landing format is **JSON Lines (NDJSON)** — one trade per line, clean field
+names (Auto Loader reads it with `cloudFiles.format = "json"`):
+
+```json
+{"event_ts": "2026-06-27T10:00:03.412Z", "symbol": "BTCUSDT", "price": 61234.5, "qty": 0.0123, "side": "buy", "trade_id": "BTCUSDT-1000001"}
+```
+
+`event_ts` is ISO-8601 UTC (epoch-millis is the realistic alternative; WP1 owns the
+cast). See [`fixtures/README.md`](./fixtures/README.md) for the full schema, the
+derivation rules, and the deliberate dirty / late / volume-spike rows that exercise
+quarantine, the watermark, and gold's spike signal.
 
 ## Local development
 
@@ -89,9 +114,16 @@ Locally you can run the unit tests and the Mode B producer:
 
 ```bash
 python -m venv .venv && . .venv/Scripts/activate   # Windows
-pip install -r requirements.txt                    # added in WP0/WP5
-pytest                                              # unit/contract tests
+pip install -r requirements.txt                    # minimal: pytest
+pytest                                              # unit/contract/fixture tests
 ```
+
+`requirements.txt` stays minimal so CI is fast (the tests are pure-Python against
+the fixture generator output — no local Spark). The data-quality tooling for WP5,
+**Great Expectations**, lives in a separate `requirements-dq.txt`.
+
+CI runs the same `pytest` suite on every PR via
+[`.github/workflows/ci.yml`](./.github/workflows/ci.yml) and gates auto-merge.
 
 Notebooks import [`src/config.py`](./src/config.py) for catalog/schema/volume/
 checkpoint values. Override per work package with `Config(dev_suffix="_dev_wpN")`

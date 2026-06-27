@@ -1,0 +1,10 @@
+# Data-quality / expectations dependencies (WP5).
+#
+# Great Expectations is the chosen DQ framework for the project. It is heavier than
+# the WP0 test deps, so it is split out here to keep the WP0 CI lane fast and
+# focused on the pure-Python contract/fixture tests. WP5 will:
+#   - express bronze/silver/gold expectations as a GX suite, and
+#   - route failures to ops.dq_failures (src/quality.py) — see CONTRACTS.md.
+#
+# Install with:  pip install -r requirements-dq.txt
+great-expectations>=1.0
