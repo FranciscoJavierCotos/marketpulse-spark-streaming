@@ -1,0 +1,7 @@
+event_ts,symbol,price,qty,side,trade_id,ingest_ts,_source_file,_quarantine_reason
+,BTCUSDT,61010.0,0.012345,buy,BTCUSDT-9000001,2026-06-27T10:05:00.000Z,/Volumes/mktpulse/bronze/raw/trades_2026-06-27T1005.json,null event_ts
+,ETHUSDT,3402.5,0.123456,sell,ETHUSDT-9000001,2026-06-27T10:05:00.000Z,/Volumes/mktpulse/bronze/raw/trades_2026-06-27T1012.json,null event_ts
+2026-06-27T10:07:10.000Z,,144.5,12.5,buy,SOLUSDT-9000002,2026-06-27T10:05:00.000Z,/Volumes/mktpulse/bronze/raw/trades_2026-06-27T1007.json,null symbol
+2026-06-27T10:20:30.000Z,,61005.0,0.02,sell,BTCUSDT-9000002,2026-06-27T10:05:00.000Z,/Volumes/mktpulse/bronze/raw/trades_2026-06-27T1020.json,null symbol
+2026-06-27T10:15:05.000Z,ETHUSDT,3399.0,0.2,buy,,2026-06-27T10:05:00.000Z,/Volumes/mktpulse/bronze/raw/trades_2026-06-27T1015.json,null trade_id
+2026-06-27T10:33:45.000Z,SOLUSDT,145.5,8.0,sell,,2026-06-27T10:05:00.000Z,/Volumes/mktpulse/bronze/raw/trades_2026-06-27T1033.json,null trade_id

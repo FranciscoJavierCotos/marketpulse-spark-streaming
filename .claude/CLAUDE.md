@@ -35,14 +35,25 @@ all within Free Edition's serverless limits via `Trigger.AvailableNow`.
 - `src/config.py` — single source of truth for catalog/schema/volume/checkpoint;
   every notebook imports it. Isolate parallel runs with `Config(dev_suffix=...)`.
 - `src/quality.py` — reusable DQ expectation helpers (WP5).
-- `CONTRACTS.md` — frozen `bronze`/`silver`/`gold` schemas.
+- `fixtures/generate_fixtures.py` — deterministic stdlib generator (WP0); emits the
+  raw **NDJSON** seed and derives the committed bronze/silver fixtures. Regenerate
+  with `python fixtures/generate_fixtures.py` (byte-identical, fixed seed).
+- `CONTRACTS.md` — frozen `bronze`/`silver`/`gold`/`ops.dq_failures` schemas.
 - `pipelines/` — Lakeflow Declarative Pipeline / Job JSON (WP6).
+- `requirements.txt` — minimal local-dev deps (pytest); `requirements-dq.txt` —
+  Great Expectations for WP5 (kept separate so WP0 CI stays lean).
+- `.github/workflows/ci.yml` — runs the pure-Python pytest suite on PRs/pushes;
+  the required gate for CI-gated auto-merge.
+
+**Raw landing = JSON Lines (NDJSON), clean field names** (`event_ts`/`symbol`/
+`price`/`qty`/`side`/`trade_id`, not Binance-native `a`/`p`/`q`). WP1 reads it with
+`cloudFiles.format = "json"`; Mode B (WP4) normalises Binance → this shape.
 
 ## Tech stack
 
 PySpark (Structured Streaming, DataFrame API) · Spark SQL · Delta Lake · Unity
 Catalog · Auto Loader (`cloudFiles`) · Lakeflow Declarative Pipelines · Databricks
-SDK/CLI (Mode B) · pytest.
+SDK/CLI (Mode B) · pytest · Great Expectations (data quality, WP5) · GitHub Actions.
 
 ## Code conventions
 

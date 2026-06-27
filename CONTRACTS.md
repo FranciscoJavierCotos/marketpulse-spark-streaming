@@ -62,6 +62,23 @@ on `(window_start, symbol)`.
 Three gold assertions: unique `(window_start, symbol)`, no negative volume, valid
 `momentum_signal` enum.
 
+## `ops.dq_failures`  (data-quality expectation failures · append-only)
+
+Generic, forward-compatible sink so WP5's expectation helpers can record failures
+without a contract break. Written by `src/quality.py` (and Lakeflow expectations);
+never silently drop bad rows.
+
+| Column         | Type      | Notes                                  |
+|----------------|-----------|----------------------------------------|
+| `check_ts`     | TIMESTAMP | When the expectation ran               |
+| `layer`        | STRING    | `bronze` / `silver` / `gold`           |
+| `table_name`   | STRING    | Fully-qualified table checked          |
+| `expectation`  | STRING    | Rule name                              |
+| `severity`     | STRING    | `warn` / `drop` / `fail`               |
+| `failed_count` | BIGINT    | Rows failing the rule                  |
+| `sample`       | STRING    | JSON sample of offending value(s)      |
+| `run_id`       | STRING    | Streaming / job run id                 |
+
 ---
 
 The shared `src/config.py` module exposes `catalog`, `schema_*`, `volume_path`,

@@ -1,0 +1,8 @@
+# The fixture generator always writes LF. Pin these to LF in the working tree on
+# every platform so the byte-identical determinism test (tests/test_fixtures.py)
+# holds on Windows checkouts too. Also keeps Python/notebook/source files LF.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.gif binary
+*.parquet binary

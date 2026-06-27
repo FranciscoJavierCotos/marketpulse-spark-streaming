@@ -1,0 +1,8 @@
+# Local development dependencies (Spark itself runs on Databricks serverless, never
+# local). The WP0 unit/contract tests are pure-Python against the fixture generator
+# output, so this stays minimal and CI is fast.
+pytest>=8
+
+# Data-quality / expectations tooling (Great Expectations) is heavier and only
+# needed for WP5 — kept out of this file so WP0 CI stays lean. See
+# requirements-dq.txt and the README "Data quality" note.
