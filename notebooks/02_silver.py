@@ -22,15 +22,19 @@
 # MAGIC ## Widgets / parameters
 # MAGIC - `dev_suffix` — isolate a parallel work package's namespace (`silver_dev_wp2`,
 # MAGIC   …) via `Config(dev_suffix=…)`; empty in production.
+# MAGIC - `catalog` — Unity Catalog catalog (default `mktpulse`); the WP6 Job passes it
+# MAGIC   so the pipeline is parameterised by catalog/schema, not hard-coded.
 # MAGIC - `reset_checkpoint` — `"true"` clears this stream's checkpoint **and** truncates
 # MAGIC   `silver.trades_1min` for a clean reprocess from the start of bronze. Never
 # MAGIC   implicit — re-runs are otherwise incremental and idempotent.
 
 # COMMAND ----------
 dbutils.widgets.text("dev_suffix", "")
+dbutils.widgets.text("catalog", "mktpulse")
 dbutils.widgets.dropdown("reset_checkpoint", "false", ["false", "true"])
 
 DEV_SUFFIX = dbutils.widgets.get("dev_suffix")
+CATALOG = dbutils.widgets.get("catalog") or "mktpulse"
 RESET_CHECKPOINT = dbutils.widgets.get("reset_checkpoint") == "true"
 
 # COMMAND ----------
@@ -64,7 +68,7 @@ else:
 from src.config import Config  # noqa: E402
 from src.silver import to_silver  # noqa: E402  — the shared watermark+window+dedup transform
 
-cfg = Config(dev_suffix=DEV_SUFFIX)
+cfg = Config(catalog=CATALOG, dev_suffix=DEV_SUFFIX)
 CHECKPOINT = cfg.checkpoint("silver_trades_1min")
 print(f"Repo root: {REPO_ROOT}")
 print(f"Source : {cfg.tbl_bronze_trades}")

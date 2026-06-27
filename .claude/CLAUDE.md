@@ -63,7 +63,12 @@ all within Free Edition's serverless limits via `Trigger.AvailableNow`.
   raw **NDJSON** seed and derives the committed bronze/silver/gold fixtures. Regenerate
   with `python fixtures/generate_fixtures.py` (byte-identical, fixed seed).
 - `CONTRACTS.md` — frozen `bronze`/`silver`/`gold`/`ops.dq_failures` schemas.
-- `pipelines/` — Lakeflow Declarative Pipeline / Job JSON (WP6).
+- `pipelines/marketpulse_job.json` — multi-task Databricks **Job** orchestrating
+  `01_bronze → 02_silver → 03_gold` (WP6): linear `depends_on` DAG, serverless,
+  per-task retries, `max_concurrent_runs: 1`, 15-min schedule (shipped `PAUSED`),
+  `git_source` on `main`, `catalog`/`dev_suffix` job params → notebook widgets. A
+  Job (not a Lakeflow *Declarative* Pipeline) so the imperative streaming notebooks
+  run as-is. Validated by `tests/test_pipeline.py`; see `pipelines/README.md`.
 - `requirements.txt` — minimal local-dev deps (pytest); `requirements-dq.txt` —
   Great Expectations for WP5; `requirements-producer.txt` — Mode B's
   websocket-client + databricks-sdk (all kept separate so CI stays lean).

@@ -29,11 +29,13 @@ dbutils.widgets.dropdown("reset", "false", ["false", "true"])
 dbutils.widgets.dropdown("seed_raw", "true", ["false", "true"])
 dbutils.widgets.dropdown("seed_fixtures", "true", ["false", "true"])
 dbutils.widgets.text("dev_suffix", "")
+dbutils.widgets.text("catalog", "mktpulse")
 
 RESET = dbutils.widgets.get("reset") == "true"
 SEED_RAW = dbutils.widgets.get("seed_raw") == "true"
 SEED_FIXTURES = dbutils.widgets.get("seed_fixtures") == "true"
 DEV_SUFFIX = dbutils.widgets.get("dev_suffix")
+CATALOG = dbutils.widgets.get("catalog") or "mktpulse"
 
 # COMMAND ----------
 # MAGIC %md
@@ -69,7 +71,7 @@ else:
 
 from src.config import Config  # noqa: E402
 
-cfg = Config(dev_suffix=DEV_SUFFIX)
+cfg = Config(catalog=CATALOG, dev_suffix=DEV_SUFFIX)
 print(f"Repo root: {REPO_ROOT}")
 print(f"Catalog={cfg.catalog}  bronze={cfg.schema_bronze}  silver={cfg.schema_silver} "
       f"gold={cfg.schema_gold}  ops={cfg.schema_ops}")

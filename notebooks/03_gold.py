@@ -23,14 +23,18 @@
 # MAGIC ## Widgets / parameters
 # MAGIC - `dev_suffix` — isolate a parallel work package's namespace (`gold_dev_wp3`, …)
 # MAGIC   via `Config(dev_suffix=…)`; empty in production.
+# MAGIC - `catalog` — Unity Catalog catalog (default `mktpulse`); the WP6 Job passes it
+# MAGIC   so the pipeline is parameterised by catalog/schema, not hard-coded.
 # MAGIC - `reset` — `"true"` truncates `gold.market_pulse` for a clean full recompute.
 # MAGIC   Never implicit — re-runs are otherwise incremental and idempotent.
 
 # COMMAND ----------
 dbutils.widgets.text("dev_suffix", "")
+dbutils.widgets.text("catalog", "mktpulse")
 dbutils.widgets.dropdown("reset", "false", ["false", "true"])
 
 DEV_SUFFIX = dbutils.widgets.get("dev_suffix")
+CATALOG = dbutils.widgets.get("catalog") or "mktpulse"
 RESET = dbutils.widgets.get("reset") == "true"
 
 # COMMAND ----------
@@ -68,7 +72,7 @@ from src.gold import (  # noqa: E402  — shared signal maths + the enum the ass
     to_gold,
 )
 
-cfg = Config(dev_suffix=DEV_SUFFIX)
+cfg = Config(catalog=CATALOG, dev_suffix=DEV_SUFFIX)
 print(f"Repo root: {REPO_ROOT}")
 print(f"Source : {cfg.tbl_silver_trades_1min}")
 print(f"Target : {cfg.tbl_gold_market_pulse}")
