@@ -52,7 +52,13 @@ all within Free Edition's serverless limits via `Trigger.AvailableNow`.
   (Mode B core), NDJSON (de)serialization, and replay pacing helpers (chunk /
   restamp). Pure-Python, unit-tested in CI; the notebook and the local script are
   thin I/O shells over it.
-- `src/quality.py` — reusable DQ expectation helpers (WP5).
+- `src/quality.py` — reusable DQ expectation helpers (WP5): one definition per rule
+  rendered both as a pure-Python `predicate` (CI oracle, no Spark) and a Spark
+  `condition` column (same twin pattern as `bronze`/`silver`/`gold`). Constructors
+  `not_null`/`positive`/`in_range`/`is_in` each carry a `severity` (`warn` keep /
+  `drop` filter / `fail` may abort); `apply_expectations(df, …)` is the one-line
+  `foreachBatch` call WP1–WP3 use to count violations, route survivors, and append a
+  row per failing rule to `ops.dq_failures` (never silently dropped).
 - `fixtures/generate_fixtures.py` — deterministic stdlib generator (WP0); emits the
   raw **NDJSON** seed and derives the committed bronze/silver/gold fixtures. Regenerate
   with `python fixtures/generate_fixtures.py` (byte-identical, fixed seed).

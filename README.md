@@ -119,8 +119,42 @@ pytest                                              # unit/contract/fixture test
 ```
 
 `requirements.txt` stays minimal so CI is fast (the tests are pure-Python against
-the fixture generator output — no local Spark). The data-quality tooling for WP5,
-**Great Expectations**, lives in a separate `requirements-dq.txt`.
+the fixture generator output — no local Spark). The heavier data-quality framework
+option for WP5, **Great Expectations**, lives in a separate `requirements-dq.txt`.
+
+### Data quality & expectations (WP5)
+
+[`src/quality.py`](./src/quality.py) is the dependency-free core the streaming
+`foreachBatch` paths use directly (Great Expectations stays optional, for a fuller
+suite). Each expectation is defined once and rendered twice — a pure-Python
+`predicate` (the CI oracle, no Spark) and an equivalent Spark `condition` column —
+the same twin pattern as the `bronze`/`silver`/`gold` modules. The constructors:
+
+- `not_null(*cols)` — keys must be present (default severity `fail`).
+- `positive(col)` — strictly `> 0`, e.g. `price`/`qty` (default `drop`).
+- `in_range(col, minimum=…, maximum=…)` — inclusive bounds (default `warn`).
+- `is_in(col, allowed)` — enum membership, e.g. `side` (default `drop`).
+
+Each rule carries a **severity**: `warn` records the failure and keeps the row,
+`drop` records it and filters the offenders out of the batch, `fail` records it and
+may raise to abort the run. WP1–WP3 guard a batch with one line inside their
+`foreachBatch`:
+
+```python
+from src.quality import apply_expectations, not_null, positive, is_in
+
+clean = apply_expectations(
+    batch_df,
+    [not_null("event_ts", "symbol", "trade_id"), positive("price"), is_in("side", ["buy", "sell"])],
+    layer="bronze", table_name=cfg.tbl_bronze_trades,
+    dq_table=cfg.tbl_dq_failures, run_id=run_id,
+)
+```
+
+Every violated rule appends a row to `ops.dq_failures` (`check_ts`, `layer`,
+`table_name`, `expectation`, `severity`, `failed_count`, a JSON `sample` of offending
+values, `run_id`) — bad rows are **routed, never silently dropped**. The pure-Python
+twins (`evaluate` / `split_kept`) are unit-tested in CI without Spark.
 
 ### Producers (WP4)
 
