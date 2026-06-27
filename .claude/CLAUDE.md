@@ -37,6 +37,9 @@ all within Free Edition's serverless limits via `Trigger.AvailableNow`.
 - `src/bronze.py` — shared bronze quarantine-routing rule (WP1): one definition,
   rendered both as a pure-Python `quarantine_reason` (unit-tested in CI without
   Spark) and a `quarantine_reason_column` Spark expression `01_bronze.py` uses.
+- `src/silver.py` — shared 1-min OHLCV windowing semantics (WP2): one definition,
+  rendered both as a pure-Python `aggregate_ohlcv` (CI oracle, no Spark) and the
+  `to_silver` watermark+window+dedup Spark transform `02_silver.py` runs.
 - `src/quality.py` — reusable DQ expectation helpers (WP5).
 - `fixtures/generate_fixtures.py` — deterministic stdlib generator (WP0); emits the
   raw **NDJSON** seed and derives the committed bronze/silver fixtures. Regenerate
