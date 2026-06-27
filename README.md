@@ -78,7 +78,7 @@ producers/      producer.py (Mode B local Binance WS producer)
 src/            config.py (parameterisation) · bronze.py (quarantine rule) · silver.py (OHLCV transform + oracle) · gold.py (signals + oracle) · producer.py (shared landing-file shape, Mode A+B) · quality.py (DQ helpers)
 fixtures/       generate_fixtures.py + committed raw/bronze/silver/gold seed (see fixtures/README.md)
 tests/          pytest suites (config · contracts · fixtures · bronze · silver · gold · producer)
-pipelines/      Lakeflow Declarative Pipeline / Job JSON
+pipelines/      marketpulse_job.json (multi-task Job: bronze→silver→gold) + README
 .github/        workflows/ci.yml (pytest on every PR)
 CONTRACTS.md    frozen table contracts (read-only after WP0)
 ```
@@ -186,6 +186,28 @@ one fed them.
 CI runs the same `pytest` suite on every PR via
 [`.github/workflows/ci.yml`](./.github/workflows/ci.yml). A PR is **never merged
 before that check is green** (the workflow watches `gh pr checks --watch` first).
+
+### Orchestration (WP6)
+
+[`pipelines/marketpulse_job.json`](./pipelines/marketpulse_job.json) is a
+multi-task **Databricks Job** that wires the medallion into one scheduled run:
+`bronze_ingest → silver_aggregate → gold_signals` (a linear `depends_on` DAG).
+Because each notebook uses `Trigger.AvailableNow`, a single run drains each
+layer's backlog **from its checkpoint** and stops — near-real-time without an
+always-on stream. It runs on **serverless** (no cluster pinned), with
+`max_retries: 2` per task, `max_concurrent_runs: 1` (runs never share a
+checkpoint), and a 15-min schedule shipped **`PAUSED`** so importing it never
+silently burns quota. Job params `catalog` / `dev_suffix` flow into every
+notebook widget via `{{job.parameters.*}}`, so the pipeline is parameterised by
+catalog/schema end-to-end.
+
+A multi-task Job (not a Lakeflow *Declarative* Pipeline) is the right tool here:
+the notebooks are imperative streaming (`foreachBatch` + `MERGE` +
+`Trigger.AvailableNow`) — the project's headline depth — and a Job orchestrates
+them as-is rather than forcing a `@dlt.table` rewrite. Deploy with
+`databricks jobs create --json @pipelines/marketpulse_job.json`; see
+[`pipelines/README.md`](./pipelines/README.md) for the full deploy/run steps and
+parameter table. The committed JSON is CI-validated by `tests/test_pipeline.py`.
 
 ### Branch protection (active)
 

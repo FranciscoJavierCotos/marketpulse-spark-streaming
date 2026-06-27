@@ -21,10 +21,14 @@
 # MAGIC - `dev_suffix` — isolate a parallel work package's namespace (`bronze_dev_wp1`,
 # MAGIC   …) via `Config(dev_suffix=…)`, including its own checkpoint so parallel runs
 # MAGIC   never share state.
+# MAGIC - `catalog` — Unity Catalog catalog (default `mktpulse`); the WP6 Job passes it
+# MAGIC   so the whole pipeline is parameterised by catalog/schema, not hard-coded.
 
 # COMMAND ----------
 dbutils.widgets.text("dev_suffix", "")
+dbutils.widgets.text("catalog", "mktpulse")
 DEV_SUFFIX = dbutils.widgets.get("dev_suffix")
+CATALOG = dbutils.widgets.get("catalog") or "mktpulse"
 
 # COMMAND ----------
 # MAGIC %md
@@ -59,7 +63,7 @@ else:
 from src.config import Config  # noqa: E402
 from src.bronze import quarantine_reason_column  # noqa: E402
 
-cfg = Config(dev_suffix=DEV_SUFFIX)
+cfg = Config(catalog=CATALOG, dev_suffix=DEV_SUFFIX)
 print(f"Repo root: {REPO_ROOT}")
 print(f"Landing volume (read):  {cfg.volume_path}")
 print(f"Bronze table (write):   {cfg.tbl_bronze_trades}")

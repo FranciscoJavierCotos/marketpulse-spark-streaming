@@ -1,0 +1,95 @@
+{
+  "name": "marketpulse-medallion",
+  "tags": {
+    "project": "marketpulse",
+    "managed_by": "repo",
+    "work_package": "WP6"
+  },
+  "max_concurrent_runs": 1,
+  "timeout_seconds": 3600,
+  "queue": {
+    "enabled": true
+  },
+  "parameters": [
+    {
+      "name": "catalog",
+      "default": "mktpulse"
+    },
+    {
+      "name": "dev_suffix",
+      "default": ""
+    }
+  ],
+  "git_source": {
+    "git_url": "https://github.com/FranciscoJavierCotos/marketpulse-spark-streaming.git",
+    "git_provider": "gitHub",
+    "git_branch": "main"
+  },
+  "schedule": {
+    "quartz_cron_expression": "0 0/15 * * * ?",
+    "timezone_id": "UTC",
+    "pause_status": "PAUSED"
+  },
+  "tasks": [
+    {
+      "task_key": "bronze_ingest",
+      "description": "Auto Loader -> bronze.trades (+ quarantine), Trigger.AvailableNow.",
+      "notebook_task": {
+        "notebook_path": "notebooks/01_bronze",
+        "source": "GIT",
+        "base_parameters": {
+          "catalog": "{{job.parameters.catalog}}",
+          "dev_suffix": "{{job.parameters.dev_suffix}}"
+        }
+      },
+      "max_retries": 2,
+      "min_retry_interval_millis": 60000,
+      "retry_on_timeout": true,
+      "timeout_seconds": 1800
+    },
+    {
+      "task_key": "silver_aggregate",
+      "description": "Watermarked 1-min windowed OHLCV; foreachBatch + MERGE upsert.",
+      "depends_on": [
+        {
+          "task_key": "bronze_ingest"
+        }
+      ],
+      "notebook_task": {
+        "notebook_path": "notebooks/02_silver",
+        "source": "GIT",
+        "base_parameters": {
+          "catalog": "{{job.parameters.catalog}}",
+          "dev_suffix": "{{job.parameters.dev_suffix}}",
+          "reset_checkpoint": "false"
+        }
+      },
+      "max_retries": 2,
+      "min_retry_interval_millis": 60000,
+      "retry_on_timeout": true,
+      "timeout_seconds": 1800
+    },
+    {
+      "task_key": "gold_signals",
+      "description": "gold.market_pulse signals; incremental lookback + MERGE.",
+      "depends_on": [
+        {
+          "task_key": "silver_aggregate"
+        }
+      ],
+      "notebook_task": {
+        "notebook_path": "notebooks/03_gold",
+        "source": "GIT",
+        "base_parameters": {
+          "catalog": "{{job.parameters.catalog}}",
+          "dev_suffix": "{{job.parameters.dev_suffix}}",
+          "reset": "false"
+        }
+      },
+      "max_retries": 2,
+      "min_retry_interval_millis": 60000,
+      "retry_on_timeout": true,
+      "timeout_seconds": 1800
+    }
+  ]
+}
