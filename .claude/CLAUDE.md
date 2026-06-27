@@ -30,8 +30,11 @@ all within Free Edition's serverless limits via `Trigger.AvailableNow`.
 - `notebooks/01_bronze.py` — Auto Loader → `bronze.trades` (+ quarantine) (WP1).
 - `notebooks/02_silver.py` — watermark + windowed agg + MERGE (WP2, headline).
 - `notebooks/03_gold.py` — `gold.market_pulse` signals (WP3).
-- `notebooks/04_replay_producer.py` — Mode A replay generator (WP4).
-- `producers/producer.py` — Mode B local Binance WS producer (WP4).
+- `notebooks/04_replay_producer.py` — Mode A: bounded timed drip of the seed into
+  the landing Volume (WP4).
+- `producers/producer.py` — Mode B local Binance WS producer (WP4): WS → normalize
+  → batched small files → push to Volume via the Databricks SDK; CLI with
+  `--dry-run`.
 - `src/config.py` — single source of truth for catalog/schema/volume/checkpoint;
   every notebook imports it. Isolate parallel runs with `Config(dev_suffix=...)`.
 - `src/bronze.py` — shared bronze quarantine-routing rule (WP1): one definition,
@@ -40,6 +43,11 @@ all within Free Edition's serverless limits via `Trigger.AvailableNow`.
 - `src/silver.py` — shared 1-min OHLCV windowing semantics (WP2): one definition,
   rendered both as a pure-Python `aggregate_ohlcv` (CI oracle, no Spark) and the
   `to_silver` watermark+window+dedup Spark transform `02_silver.py` runs.
+- `src/producer.py` — shared landing-file shape for both producers (WP4): one
+  definition of the raw NDJSON record, the Binance→clean `normalize_binance_trade`
+  (Mode B core), NDJSON (de)serialization, and replay pacing helpers (chunk /
+  restamp). Pure-Python, unit-tested in CI; the notebook and the local script are
+  thin I/O shells over it.
 - `src/quality.py` — reusable DQ expectation helpers (WP5).
 - `fixtures/generate_fixtures.py` — deterministic stdlib generator (WP0); emits the
   raw **NDJSON** seed and derives the committed bronze/silver fixtures. Regenerate
@@ -47,7 +55,8 @@ all within Free Edition's serverless limits via `Trigger.AvailableNow`.
 - `CONTRACTS.md` — frozen `bronze`/`silver`/`gold`/`ops.dq_failures` schemas.
 - `pipelines/` — Lakeflow Declarative Pipeline / Job JSON (WP6).
 - `requirements.txt` — minimal local-dev deps (pytest); `requirements-dq.txt` —
-  Great Expectations for WP5 (kept separate so WP0 CI stays lean).
+  Great Expectations for WP5; `requirements-producer.txt` — Mode B's
+  websocket-client + databricks-sdk (all kept separate so CI stays lean).
 - `.github/workflows/ci.yml` — runs the pure-Python pytest suite on PRs/pushes;
   the required gate for CI-gated auto-merge.
 
@@ -59,7 +68,8 @@ all within Free Edition's serverless limits via `Trigger.AvailableNow`.
 
 PySpark (Structured Streaming, DataFrame API) · Spark SQL · Delta Lake · Unity
 Catalog · Auto Loader (`cloudFiles`) · Lakeflow Declarative Pipelines · Databricks
-SDK/CLI (Mode B) · pytest · Great Expectations (data quality, WP5) · GitHub Actions.
+SDK/CLI + websocket-client (Mode B) · pytest · Great Expectations (data quality,
+WP5) · GitHub Actions.
 
 ## Code conventions
 

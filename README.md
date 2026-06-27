@@ -73,11 +73,11 @@ optional **Mode B** producer.
 ## Repository layout
 
 ```
-notebooks/      00_setup · 01_bronze · 02_silver · 03_gold · 04_replay_producer
+notebooks/      00_setup · 01_bronze · 02_silver · 03_gold · 04_replay_producer (Mode A)
 producers/      producer.py (Mode B local Binance WS producer)
-src/            config.py (parameterisation) · bronze.py (quarantine rule) · silver.py (OHLCV transform + oracle) · quality.py (DQ helpers)
+src/            config.py (parameterisation) · bronze.py (quarantine rule) · silver.py (OHLCV transform + oracle) · producer.py (shared landing-file shape, Mode A+B) · quality.py (DQ helpers)
 fixtures/       generate_fixtures.py + committed raw/bronze/silver seed (see fixtures/README.md)
-tests/          pytest suites (config · contracts · fixtures · silver)
+tests/          pytest suites (config · contracts · fixtures · bronze · silver · producer)
 pipelines/      Lakeflow Declarative Pipeline / Job JSON
 .github/        workflows/ci.yml (pytest on every PR)
 CONTRACTS.md    frozen table contracts (read-only after WP0)
@@ -121,6 +121,33 @@ pytest                                              # unit/contract/fixture test
 `requirements.txt` stays minimal so CI is fast (the tests are pure-Python against
 the fixture generator output — no local Spark). The data-quality tooling for WP5,
 **Great Expectations**, lives in a separate `requirements-dq.txt`.
+
+### Producers (WP4)
+
+Both producers write the **same raw NDJSON landing shape** (defined once in
+[`src/producer.py`](./src/producer.py)), so the Spark layers never change which
+one fed them.
+
+- **Mode A — replay (`notebooks/04_replay_producer.py`, on Databricks):** drips
+  the committed `fixtures/raw/*.json` seed into the landing Volume a few files per
+  tick (`batch_files` / `interval_seconds` / `max_ticks` widgets), then stops — a
+  bounded drip, never an always-on stream. Run `00_setup` with `seed_raw=false`
+  first so the replay is the only writer, then re-run `01_bronze`
+  (`Trigger.AvailableNow`) to ingest each batch. Optional `restamp=true` re-bases
+  the seed's `event_ts` onto wall-clock now for a live-looking demo.
+
+- **Mode B — live (`producers/producer.py`, local):** subscribes to the Binance
+  trade WebSocket, normalises each message into the landing shape, batches trades
+  into small files, and pushes them to the UC Volume via the Databricks SDK
+  (`event_ts`/`side`/`trade_id` derived from Binance's `T`/`m`/`t`). Needs the
+  separate `requirements-producer.txt` (websocket-client + databricks-sdk):
+
+  ```bash
+  pip install -r requirements-producer.txt
+  export DATABRICKS_HOST=...  DATABRICKS_TOKEN=...     # or a CLI profile
+  python producers/producer.py --symbols BTCUSDT ETHUSDT --max-trades 200
+  python producers/producer.py --dry-run --max-trades 20   # print, never upload
+  ```
 
 CI runs the same `pytest` suite on every PR via
 [`.github/workflows/ci.yml`](./.github/workflows/ci.yml). A PR is **never merged
