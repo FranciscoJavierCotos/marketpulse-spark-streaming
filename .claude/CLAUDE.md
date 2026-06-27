@@ -77,7 +77,13 @@ README → Local development.
 - **After a fix/feature:** use the `testing` skill to add tests (a regression test for bugs) before opening the PR.
 - **If no CI runs the tests:** use the `ci-cd-pipelines` skill.
 - **Document every change** in the Obsidian vault (see Engineering journal below): create or update the change's page and keep the database index in sync — in the same change, before the PR.
-- **Ship it (CI-gated auto-merge — low human review):** once the PR is open, enable GitHub auto-merge so it merges and deletes its branch automatically after all required checks pass: `gh pr merge <#> --auto --squash --delete-branch`. The security + test gates are the review — GitHub forbids approving your own PR, so never merge before CI is green and never bypass branch protection. If a check is red, fix it; don't override. After it merges, flip the Obsidian page + `_Database.md` row to `done` and fill in the PR link.
+- **Ship it (CI-gated, low human review) — never merge before CI is green:** the security + test gates *are* the review (GitHub forbids approving your own PR), so a green CI run is a hard prerequisite for merge. Once the PR is open:
+  1. **Block on CI:** run `gh pr checks <#> --watch` and wait for every check to pass. This is the gate, and it works regardless of repo settings — do not skip it.
+  2. **If a check is red:** fix it and push; re-watch. Never merge red, never `--admin`/override, never bypass branch protection.
+  3. **Merge only once green:** `gh pr merge <#> --squash --delete-branch`.
+  - `--auto` is optional belt-and-suspenders: it only *gates* when a required status check exists on `main`. **Without branch protection it merges immediately**, so it is NOT a substitute for the explicit `--watch` wait in step 1 — only add `--auto` on top of, never instead of, watching checks green.
+  - **Recommended one-time repo config (manual):** add a branch-protection ruleset on `main` requiring the `pytest (3.12)` check (and no self-review) so merges are gated server-side too. See README → *Branch protection*.
+  - After it merges, flip the Obsidian page + `_Database.md` row to `done` and fill in the PR link.
 
 ## Keep docs in sync (same change, never a follow-up)
 

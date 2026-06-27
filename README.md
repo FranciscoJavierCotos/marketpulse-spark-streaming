@@ -123,7 +123,30 @@ the fixture generator output — no local Spark). The data-quality tooling for W
 **Great Expectations**, lives in a separate `requirements-dq.txt`.
 
 CI runs the same `pytest` suite on every PR via
-[`.github/workflows/ci.yml`](./.github/workflows/ci.yml) and gates auto-merge.
+[`.github/workflows/ci.yml`](./.github/workflows/ci.yml). A PR is **never merged
+before that check is green** (the workflow watches `gh pr checks --watch` first).
+
+### Branch protection (one-time manual repo config)
+
+To gate merges **server-side** too — so `gh pr merge --auto` actually waits and no
+merge (by anyone) can land on red — add a ruleset on `main` requiring the
+`pytest (3.12)` check. GitHub UI: **Settings → Branches → Add branch ruleset** →
+target `main` → enable *Require status checks to pass* → add `pytest (3.12)`. Or via
+the CLI:
+
+```bash
+gh api -X PUT repos/:owner/:repo/branches/main/protection --input - <<'JSON'
+{
+  "required_status_checks": { "strict": true, "checks": [ { "context": "pytest (3.12)" } ] },
+  "enforce_admins": true,
+  "required_pull_request_reviews": null,
+  "restrictions": null
+}
+JSON
+```
+
+`enforce_admins: true` makes the gate apply to the repo owner as well (no silent
+self-override); reviews are left off because GitHub forbids approving your own PR.
 
 Notebooks import [`src/config.py`](./src/config.py) for catalog/schema/volume/
 checkpoint values. Override per work package with `Config(dev_suffix="_dev_wpN")`
