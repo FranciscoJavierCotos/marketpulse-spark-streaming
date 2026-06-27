@@ -75,9 +75,9 @@ optional **Mode B** producer.
 ```
 notebooks/      00_setup · 01_bronze · 02_silver · 03_gold · 04_replay_producer (Mode A)
 producers/      producer.py (Mode B local Binance WS producer)
-src/            config.py (parameterisation) · bronze.py (quarantine rule) · silver.py (OHLCV transform + oracle) · producer.py (shared landing-file shape, Mode A+B) · quality.py (DQ helpers)
-fixtures/       generate_fixtures.py + committed raw/bronze/silver seed (see fixtures/README.md)
-tests/          pytest suites (config · contracts · fixtures · bronze · silver · producer)
+src/            config.py (parameterisation) · bronze.py (quarantine rule) · silver.py (OHLCV transform + oracle) · gold.py (signals + oracle) · producer.py (shared landing-file shape, Mode A+B) · quality.py (DQ helpers)
+fixtures/       generate_fixtures.py + committed raw/bronze/silver/gold seed (see fixtures/README.md)
+tests/          pytest suites (config · contracts · fixtures · bronze · silver · gold · producer)
 pipelines/      Lakeflow Declarative Pipeline / Job JSON
 .github/        workflows/ci.yml (pytest on every PR)
 CONTRACTS.md    frozen table contracts (read-only after WP0)
