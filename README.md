@@ -35,9 +35,9 @@ SOURCE (off-Databricks, optional)
   │  GOLD    market_pulse: momentum_signal · volume_spike(>2× rolling) · volatility             │
   └──────────────────────────────────┬──────────────────────────────────────────────────────────┘
                                       ▼
-    Lakeflow Declarative Pipeline / Job   ·   Unity Catalog governance
+    Multi-task Job: …→gold→validate gate ·   Unity Catalog governance
     expectations (DQ gates) · retries     ·   lineage · schema enforcement
-    Trigger.AvailableNow (scheduled)      ·   checkpoints · quarantine tables
+    Trigger.AvailableNow + file-arrival   ·   checkpoints · quarantine tables
 ```
 
 Catalog `mktpulse`; schemas `bronze`, `silver`, `gold`, `ops`. Table contracts
@@ -73,12 +73,12 @@ optional **Mode B** producer.
 ## Repository layout
 
 ```
-notebooks/      00_setup · 01_bronze · 02_silver · 03_gold · 04_replay_producer (Mode A)
+notebooks/      00_setup · 01_bronze · 02_silver · 03_gold · 04_replay_producer (Mode A) · 05_validate (data-test gate)
 producers/      producer.py (Mode B local Binance WS producer)
 src/            config.py (parameterisation) · bronze.py (quarantine rule) · silver.py (OHLCV transform + oracle) · gold.py (signals + oracle) · producer.py (shared landing-file shape, Mode A+B) · quality.py (DQ helpers)
 fixtures/       generate_fixtures.py + committed raw/bronze/silver/gold seed (see fixtures/README.md)
 tests/          pytest suites (config · contracts · fixtures · bronze · silver · gold · producer)
-pipelines/      marketpulse_job.json (multi-task Job: bronze→silver→gold) + README
+pipelines/      marketpulse_job.json (multi-task Job: bronze→silver→gold→validate, file-arrival triggered) + README
 .github/        workflows/ci.yml (pytest on every PR)
 CONTRACTS.md    frozen table contracts (read-only after WP0)
 ```
@@ -190,16 +190,31 @@ before that check is green** (the workflow watches `gh pr checks --watch` first)
 ### Orchestration (WP6)
 
 [`pipelines/marketpulse_job.json`](./pipelines/marketpulse_job.json) is a
-multi-task **Databricks Job** that wires the medallion into one scheduled run:
-`bronze_ingest → silver_aggregate → gold_signals` (a linear `depends_on` DAG).
-Because each notebook uses `Trigger.AvailableNow`, a single run drains each
-layer's backlog **from its checkpoint** and stops — near-real-time without an
-always-on stream. It runs on **serverless** (no cluster pinned), with
-`max_retries: 2` per task, `max_concurrent_runs: 1` (runs never share a
-checkpoint), and a 15-min schedule shipped **`PAUSED`** so importing it never
-silently burns quota. Job params `catalog` / `dev_suffix` flow into every
-notebook widget via `{{job.parameters.*}}`, so the pipeline is parameterised by
+multi-task **Databricks Job** that wires the medallion into one event-driven run:
+`bronze_ingest → silver_aggregate → gold_signals → validate` (a linear
+`depends_on` DAG). It is fired by a **file-arrival trigger** on the landing Volume
+— when the producer lands NDJSON, the Job runs itself **source→target with minimum
+human interaction** (no clock). Because each notebook uses `Trigger.AvailableNow`,
+a single run drains each layer's backlog **from its checkpoint** and stops —
+near-real-time without an always-on stream. It runs on **serverless** (no cluster
+pinned), with `max_retries: 2` per task, `max_concurrent_runs: 1` (runs never
+share a checkpoint), the trigger shipped **`PAUSED`** so importing it never
+silently burns quota. Job params `catalog` / `dev_suffix` flow into every notebook
+widget via `{{job.parameters.*}}`, so the pipeline is parameterised by
 catalog/schema end-to-end.
+
+The tail **`validate` task** ([`notebooks/05_validate.py`](./notebooks/05_validate.py))
+is an automated **data-test gate**: after gold is written it asserts the output is
+non-empty, the `(window_start, symbol)` grain is intact, gold keeps up with silver,
+and no `fail`-severity rows hit `ops.dq_failures` — and **raises to fail the run**
+if not. This is the data-level counterpart to CI: `pytest` gates the *code* on
+every PR; `validate` gates the *data* on every run.
+
+**Live ingestion** uses **Mode B** (`producers/producer.py`, Binance WebSocket),
+which runs **off Databricks** (Free Edition forbids outbound calls from notebooks)
+on your machine or a small always-on host and pushes to the Volume — tripping the
+file-arrival trigger. Mode A replay trips the same trigger for a reproducible,
+fully-on-Databricks demo.
 
 A multi-task Job (not a Lakeflow *Declarative* Pipeline) is the right tool here:
 the notebooks are imperative streaming (`foreachBatch` + `MERGE` +
