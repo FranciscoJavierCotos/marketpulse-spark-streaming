@@ -261,4 +261,11 @@ watermark + `MERGE` idempotency story. *(Expanded in WP7.)*
 
 ## Issues encountered
 
-_None yet — notable diagnosed bugs get an entry here._
+- **`persist()`/`cache()` crash the stream on serverless** ([#23](https://github.com/FranciscoJavierCotos/marketpulse-spark-streaming/issues/23)).
+  The bronze `foreachBatch` called `batch_df.persist()` (and `apply_expectations`
+  called `df.cache()`) to avoid re-scanning a micro-batch. On Databricks Free
+  Edition serverless the Spark block cache is unavailable — the stream died with
+  `[NOT_SUPPORTED_WITH_SERVERLESS] PERSIST TABLE is not supported on serverless
+  compute`. Fix: drop the cache and let the small `Trigger.AvailableNow` batches
+  recompute per scan; idempotency never relied on the cache (it rides on Delta
+  `txnAppId`/`txnVersion`). Guarded by `tests/test_serverless_constraints.py`.
