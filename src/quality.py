@@ -331,9 +331,10 @@ def apply_expectations(
     spark = df.sparkSession
     create_dq_failures_table(spark, dq_table)
 
-    # Cache: each expectation triggers a count() (and maybe a sample collect) over the
-    # same batch, so materialise it once rather than recomputing the plan per rule.
-    df = df.cache()
+    # No cache(): serverless compute forbids the Spark block cache
+    # ([NOT_SUPPORTED_WITH_SERVERLESS] PERSIST TABLE). Each expectation re-scans the
+    # batch (count + maybe a sample collect); the plan recomputes per rule, which is
+    # correct and acceptable for the small Trigger.AvailableNow batches this runs on.
 
     failure_records: list[tuple] = []
     kept = df

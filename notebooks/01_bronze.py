@@ -133,7 +133,10 @@ raw_stream = (
 # MAGIC    (`= batch_id`). Delta dedupes by this transaction id, so if a batch is
 # MAGIC    retried after a partial failure the same rows are not appended twice.
 # MAGIC
-# MAGIC We `persist()` the batch because it's scanned twice (clean + quarantine).
+# MAGIC **No `persist()`/`cache()`** — serverless compute forbids the Spark block cache
+# MAGIC (`[NOT_SUPPORTED_WITH_SERVERLESS] PERSIST TABLE`), so we let the batch recompute
+# MAGIC per scan. That's correct (idempotency is on `txnAppId`/`txnVersion`, not the
+# MAGIC cache) and cheap for the small `Trigger.AvailableNow` batches on Free Edition.
 
 # COMMAND ----------
 _BRONZE_COLS = ["event_ts", "symbol", "price", "qty", "side", "trade_id",
@@ -144,25 +147,23 @@ _TXN_APP_ID = f"bronze_ingest{cfg.dev_suffix}"
 
 def upsert_batch(batch_df, batch_id: int) -> None:
     """Split one micro-batch into clean vs quarantine and append both idempotently."""
-    batch_df.persist()
-    try:
-        clean = batch_df.filter(F.col("_quarantine_reason").isNull()).select(*_BRONZE_COLS)
-        bad = batch_df.filter(F.col("_quarantine_reason").isNotNull()).select(*_QUAR_COLS)
+    # No persist()/cache(): serverless rejects the block cache. The batch recomputes
+    # per scan, which is fine — idempotency rides on txnAppId/txnVersion below.
+    clean = batch_df.filter(F.col("_quarantine_reason").isNull()).select(*_BRONZE_COLS)
+    bad = batch_df.filter(F.col("_quarantine_reason").isNotNull()).select(*_QUAR_COLS)
 
-        # txnAppId/txnVersion make the append idempotent across batch retries.
-        (clean.write.format("delta").mode("append")
-            .option("txnAppId", _TXN_APP_ID)
-            .option("txnVersion", batch_id)
-            .saveAsTable(cfg.tbl_bronze_trades))
-        (bad.write.format("delta").mode("append")
-            .option("txnAppId", _TXN_APP_ID + "_quarantine")
-            .option("txnVersion", batch_id)
-            .saveAsTable(cfg.tbl_bronze_quarantine))
+    # txnAppId/txnVersion make the append idempotent across batch retries.
+    (clean.write.format("delta").mode("append")
+        .option("txnAppId", _TXN_APP_ID)
+        .option("txnVersion", batch_id)
+        .saveAsTable(cfg.tbl_bronze_trades))
+    (bad.write.format("delta").mode("append")
+        .option("txnAppId", _TXN_APP_ID + "_quarantine")
+        .option("txnVersion", batch_id)
+        .saveAsTable(cfg.tbl_bronze_quarantine))
 
-        print(f"batch {batch_id}: {clean.count()} clean → bronze, "
-              f"{bad.count()} quarantined")
-    finally:
-        batch_df.unpersist()
+    print(f"batch {batch_id}: {clean.count()} clean → bronze, "
+          f"{bad.count()} quarantined")
 
 # COMMAND ----------
 # MAGIC %md
