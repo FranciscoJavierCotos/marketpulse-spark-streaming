@@ -1,9 +1,10 @@
 # Orchestration (WP6)
 
 [`marketpulse_job.json`](./marketpulse_job.json) is the Databricks **multi-task
-Job** that wires the medallion together: it runs the three streaming notebooks in
-order — `bronze_ingest → silver_aggregate → gold_signals` — on a schedule, with
-retries, on serverless compute, inside Free Edition's quota.
+Job** that wires the medallion together: it runs the streaming notebooks in
+order — `bronze_ingest → silver_aggregate → gold_signals → validate` — **fired by
+a file-arrival trigger** when the producer lands data, with retries, on serverless
+compute, inside Free Edition's quota.
 
 ## Why a Job, not a Lakeflow Declarative Pipeline
 
@@ -20,12 +21,12 @@ fully-declarative rebuild.)
 
 Each notebook uses `Trigger.AvailableNow`: a run drains whatever backlog exists
 **from that layer's checkpoint**, then stops — no always-on stream (Free Edition
-forbids that). The Job's linear `depends_on` DAG means a single scheduled run
-walks new data bronze → silver → gold and exits:
+forbids that). The Job's linear `depends_on` DAG means a single run walks new data
+bronze → silver → gold, then **validates the output**, and exits:
 
 ```
-bronze_ingest ──▶ silver_aggregate ──▶ gold_signals
-(Auto Loader)     (watermark+MERGE)     (signals+MERGE)
+bronze_ingest ──▶ silver_aggregate ──▶ gold_signals ──▶ validate
+(Auto Loader)     (watermark+MERGE)     (signals+MERGE)    (data-test gate)
 ```
 
 - **Idempotent / from-checkpoint:** re-running never duplicates rows (checkpoint
@@ -35,11 +36,23 @@ bronze_ingest ──▶ silver_aggregate ──▶ gold_signals
 - **Serverless:** no `new_cluster` / `existing_cluster_id` on any task → tasks run
   on serverless compute (the only Free Edition option).
 - **`max_concurrent_runs: 1`:** overlapping runs would share a streaming
-  checkpoint, so runs are serialised; `queue.enabled` holds a tick that overlaps a
-  slow one instead of dropping it.
-- **Schedule:** every 15 min (`0 0/15 * * * ?`, UTC). Shipped **`PAUSED`** so
-  importing the Job never silently starts burning quota — unpause when you want it
-  live (or just **Run now**).
+  checkpoint, so runs are serialised; `queue.enabled` holds a trigger that overlaps
+  a slow run instead of dropping it.
+- **Trigger — event-driven (file arrival):** instead of a clock, the Job fires on a
+  **file-arrival trigger** watching the landing Volume
+  (`/Volumes/mktpulse/bronze/raw/`). When the producer lands NDJSON, the Job runs —
+  source→target with minimum human interaction. `min_time_between_triggers_seconds`
+  (60) and `wait_after_last_change_seconds` (30) debounce a burst of files into one
+  run. Shipped **`PAUSED`** so importing the Job never silently starts burning quota
+  — unpause when you want it live (or just **Run now**). The trigger `url` is the
+  default-catalog landing path because a job-level trigger can't template per-run
+  parameters; a `dev_suffix` run is driven with **Run now** instead.
+- **`validate` task:** the tail of the DAG runs `notebooks/05_validate` — a
+  data-level test gate that asserts gold is non-empty, the `(window_start, symbol)`
+  grain is intact, gold keeps up with silver (lag ≤ `max_lag_minutes`), and no
+  `fail`-severity rows hit `ops.dq_failures` during the run. It **raises to fail the
+  run** on any violation, so a bad batch is loud, not silent. This complements CI:
+  pytest gates the *code* on every PR; `validate` gates the *data* on every run.
 
 ## Parameters
 

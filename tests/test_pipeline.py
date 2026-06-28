@@ -5,10 +5,12 @@ Pure-Python guards on the committed Databricks Job definition
 it orchestrates. No Spark / no Databricks — just structural invariants the
 acceptance criteria of issue #7 depend on:
 
-* a linear bronze -> silver -> gold DAG that advances all three layers;
+* a linear bronze -> silver -> gold -> validate DAG (advances all layers, then
+  asserts the output is sane);
 * retries configured on every task;
 * serverless compute (no cluster pinned), inside Free Edition's quota;
-* a schedule, and catalog/dev_suffix parameterisation wired through to widgets;
+* a file-arrival trigger (event-driven on data landing), and catalog/dev_suffix
+  parameterisation wired through to widgets;
 * every task points at a notebook that actually exists in the repo.
 """
 
@@ -25,7 +27,13 @@ EXPECTED_FLOW = [
     ("bronze_ingest", None),
     ("silver_aggregate", "bronze_ingest"),
     ("gold_signals", "silver_aggregate"),
+    ("validate", "gold_signals"),
 ]
+
+# The landing Volume the file-arrival trigger watches (≈ the S3 raw bucket): new
+# files there fire the Job. Default-catalog path, since a job-level trigger url
+# can't template per-run parameters.
+LANDING_VOLUME = "/Volumes/mktpulse/bronze/raw"
 
 
 @pytest.fixture(scope="module")
@@ -73,13 +81,25 @@ def test_single_concurrent_run(job):
     assert job.get("max_concurrent_runs") == 1
 
 
-def test_scheduled_with_cron(job):
-    """Acceptance: the pipeline is scheduled (AvailableNow on a timer)."""
-    sched = job["schedule"]
-    assert sched["quartz_cron_expression"]
-    assert sched["timezone_id"]
+def test_file_arrival_trigger_on_landing_volume(job):
+    """Event-driven: the producer landing files fires the Job (not a clock).
+
+    A file-arrival trigger on the landing Volume is what makes ingestion run
+    itself source->target with minimum human interaction.
+    """
+    # Event-driven only: no cron schedule competing with the trigger.
+    assert "schedule" not in job, "file-arrival trigger replaces the cron schedule"
+
+    trigger = job["trigger"]
     # Shipped paused so importing never silently burns quota.
-    assert sched.get("pause_status") == "PAUSED"
+    assert trigger.get("pause_status") == "PAUSED"
+
+    fa = trigger["file_arrival"]
+    # Watches the landing Volume Auto Loader reads (normalise a trailing slash).
+    assert fa["url"].rstrip("/") == LANDING_VOLUME
+    # Debounce knobs present so a burst of producer files coalesces into one run.
+    assert fa["min_time_between_triggers_seconds"] >= 1
+    assert fa["wait_after_last_change_seconds"] >= 1
 
 
 def test_job_level_catalog_and_dev_suffix_params(job):

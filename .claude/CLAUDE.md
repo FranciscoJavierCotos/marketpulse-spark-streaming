@@ -32,6 +32,11 @@ all within Free Edition's serverless limits via `Trigger.AvailableNow`.
 - `notebooks/03_gold.py` — `gold.market_pulse` signals (WP3).
 - `notebooks/04_replay_producer.py` — Mode A: bounded timed drip of the seed into
   the landing Volume (WP4).
+- `notebooks/05_validate.py` — data-test gate (WP6): the `validate` task at the
+  tail of the Job DAG. After bronze→silver→gold, asserts gold is non-empty, key
+  grain intact, gold keeps up with silver (gold-vs-silver lag ≤ `max_lag_minutes`),
+  and no `fail`-severity `ops.dq_failures` in the run window — **raises to fail the
+  run** on violation. Data-level complement to the pytest CI (which gates code).
 - `producers/producer.py` — Mode B local Binance WS producer (WP4): WS → normalize
   → batched small files → push to Volume via the Databricks SDK; CLI with
   `--dry-run`.
@@ -64,11 +69,13 @@ all within Free Edition's serverless limits via `Trigger.AvailableNow`.
   with `python fixtures/generate_fixtures.py` (byte-identical, fixed seed).
 - `CONTRACTS.md` — frozen `bronze`/`silver`/`gold`/`ops.dq_failures` schemas.
 - `pipelines/marketpulse_job.json` — multi-task Databricks **Job** orchestrating
-  `01_bronze → 02_silver → 03_gold` (WP6): linear `depends_on` DAG, serverless,
-  per-task retries, `max_concurrent_runs: 1`, 15-min schedule (shipped `PAUSED`),
-  `git_source` on `main`, `catalog`/`dev_suffix` job params → notebook widgets. A
-  Job (not a Lakeflow *Declarative* Pipeline) so the imperative streaming notebooks
-  run as-is. Validated by `tests/test_pipeline.py`; see `pipelines/README.md`.
+  `01_bronze → 02_silver → 03_gold → 05_validate` (WP6): linear `depends_on` DAG,
+  serverless, per-task retries, `max_concurrent_runs: 1`, **file-arrival trigger**
+  on the landing Volume (shipped `PAUSED`) so a producer landing live data fires
+  the run event-driven (not a clock), `git_source` on `main`, `catalog`/`dev_suffix`
+  job params → notebook widgets. A Job (not a Lakeflow *Declarative* Pipeline) so
+  the imperative streaming notebooks run as-is. Validated by
+  `tests/test_pipeline.py`; see `pipelines/README.md`.
 - `requirements.txt` — minimal local-dev deps (pytest); `requirements-dq.txt` —
   Great Expectations for WP5; `requirements-producer.txt` — Mode B's
   websocket-client + databricks-sdk (all kept separate so CI stays lean).
